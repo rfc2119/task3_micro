@@ -13,10 +13,10 @@
 
 /*global vars*/
 unsigned char mode;
+void (*resetptr)( void ) = 0x0000;
 
 int main(void)
 {
-	
 	/*configurations*/
 	SET_BIT_IO_RNG(B, PORTB0, PORTB7, OUT);	//output to BCD drivers
 	SET_BIT_IO_RNG(C, PORTC0, PORTC1, IN);	//ADC{0,1}
@@ -24,8 +24,8 @@ int main(void)
 	SET_BIT_IO(D, INT0, IN);		//INT0
 	SET_BIT(PORTD, PORTD2);			//activate pull-up res for INT0
 	SET_BIT_IO(D, BUZZER, OUT);		//activate buzzer
-
-	EICRA |= (1 << ISC11);  // set INT0 to trigger on falling edge change
+	
+	EICRA |= (1 << ISC01);  // set INT0 to trigger on falling edge change
 	EIMSK |= (1 << INT0); // Turns on INT0 
 	sei(); // turn on interrupts
 
@@ -33,6 +33,7 @@ int main(void)
 	float analog, digital;
 	div_t result;
 	mode = MODE_TEMPERATURE_SENSOR;
+	//mode = MODE_POT;
 	adc_init(1,0);		//5V for all modes
 	for (;;)
 	{
@@ -51,9 +52,9 @@ int main(void)
 			result = div(analog*10, 10); 
 			
 			// TODO: improve output operation to BCD drivers
-			PORTB = (result.rem & 0x0F) << PORTB0;	//display fraction part
-			PORTB |= ((int)analog & 0x0F) << PORTB4;//display digit part
-
+			PORTB = ((int)analog & 0x0F) << PORTB0;//display digit part
+			PORTB |= (result.rem & 0x0F) << PORTB4;	//display fraction part
+			
 		}
 		else if (READ_BIT(mode, 0) == MODE_TEMPERATURE_SENSOR)
 		{
@@ -66,19 +67,15 @@ int main(void)
 			*/
 			digital = adc_read(MODE_TEMPERATURE_SENSOR);
 			analog = (digital * 5) / ((1 << 10) - 1);
-			analog *= 100;							//TODO: clarify the magic 100 (hint: 10mv/C)
-			if (analog > 60 ){
-				SET_BIT(PORTD, BUZZER);  //buzz!
-				SET_BIT_RNG(PORTB, PORTB0, PORTB7); //0xff, for debug
-			}
-			else {
-				RESET_BIT(PORTD, BUZZER);
-				result = div((int)analog, 10);
-
-				PORTB = (result.rem & 0x0F) << PORTB0;	//display units part
-				PORTB |= (result.quot & 0x0F) << PORTB4;//display tens part
-			}
+			analog *= 100;//TODO: clarify the magic 100 (hint: 10mv/C)
 			
+			//buzzer!
+			(analog > 60 ) ? SET_BIT(PORTD, BUZZER) :RESET_BIT(PORTD, BUZZER); 
+			
+			//SET_BIT_RNG(PORTB, PORTB0, PORTB7); //0xff, for debug
+			result = div((int)analog, 10);
+			PORTB = (result.quot & 0x0F) << PORTB0;//display tens part
+			PORTB |= (result.rem & 0x0F) << PORTB4;	//display units part
 			
 		}
 	}
@@ -89,5 +86,5 @@ ISR (INT0_vect)
 {
 	/*switches modes and reset display*/
 	TOGGLE_BIT(mode, 0);
-	RESET_BIT_RNG(PORTB, 0, 7);
+	if(mode == MODE_TEMPERATURE_SENSOR){resetptr();};
 }

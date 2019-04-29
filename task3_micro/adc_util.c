@@ -22,5 +22,10 @@ unsigned int adc_read(unsigned char ch)
 	// wait for conversion to complete, ADSC becomes
 	//’0? again, till then, run loop continuously
 	while(ADCSRA & (1<<ADSC));
+	
+	 //wait for conversion to finish
+	// while(!(ADCSRA & (1 << ADIF)));
+
+	 //ADCSRA |= (1 << ADIF); //reset as required
 	return ADC;
 }
