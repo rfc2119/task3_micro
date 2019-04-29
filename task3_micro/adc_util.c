@@ -1,5 +1,6 @@
 #include <avr/io.h>
 #include "inc/adc_util.h"
+#include "inc/bit_util.h"
 
 void adc_init(int s0,int s1)
 {
@@ -15,12 +16,12 @@ void adc_init(int s0,int s1)
 
 unsigned int adc_read(unsigned char ch)
 {
-	// select the corresponding channel 0~7
-	ADMUX |= ch;
-	// start single conversion, by writing ’1? to ADSC
-	ADCSRA |= (1<<ADSC);
-	// wait for conversion to complete, ADSC becomes
-	//’0? again, till then, run loop continuously
+	
+	RESET_BIT_RNG(ADMUX, 0, 4);	//reset any previous selected channel
+	ADMUX |= ch;	// select the corresponding channel 0~7
+	ADCSRA |= (1<<ADSC);		// start single conversion, by writing '1' to ADSC (AD Start Conversion)
+	// when the conversion is complete, ADSC returns to zero
+	// till then, poll the ADC Status Register A
 	while(ADCSRA & (1<<ADSC));
 	return ADC;
 }

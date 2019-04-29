@@ -5,14 +5,14 @@
 #include "inc/bit_util.h"
 #include "inc/adc_util.h"
 
-#define MODE_TEMPERATURE_SENSOR 0
-#define MODE_POT 1
+#define MODE_TEMPERATURE_SENSOR PORTC0
+#define MODE_POT PORTC1
 
 #define BUZZER PORTD0
 #define F_CPU 1000000UL
 
 /*global vars*/
-unsigned char mode;
+volatile char mode;
 
 int main(void)
 {
@@ -25,7 +25,9 @@ int main(void)
 	SET_BIT(PORTD, PORTD2);			//activate pull-up res for INT0
 	SET_BIT_IO(D, BUZZER, OUT);		//activate buzzer
 
-	EICRA |= (1 << ISC11);  // set INT0 to trigger on falling edge change
+	SET_BIT(EICRA, ISC01);  // set INT0 to trigger on falling edge change
+	RESET_BIT(EICRA, ISC00);
+	
 	EIMSK |= (1 << INT0); // Turns on INT0 
 	sei(); // turn on interrupts
 
@@ -34,51 +36,46 @@ int main(void)
 	div_t result;
 	mode = MODE_TEMPERATURE_SENSOR;
 	adc_init(1,0);		//5V for all modes
+	
 	for (;;)
 	{
-		if (READ_BIT(mode, 0) == MODE_POT){
-
+		if (mode == MODE_POT){
 			/*
-			set vref = 5
 			read the potentiometer
 			analog = reading * v_ref / ((1 << 11) - 1)
 			display integer part
 			display fraction part
 			*/
-			
+			ADC = 0;
 			digital = adc_read(MODE_POT);
-			analog = digital * 5 / ((1 << 10) -1 );	//TODO: 1<<10 - 1 is ? (hint: adc bits)
+			analog = (digital * 5) / ((1 << 10) -1 );	//TODO: 1<<10 - 1 is ? (hint: adc bits)
 			result = div(analog*10, 10); 
 			
 			// TODO: improve output operation to BCD drivers
 			PORTB = (result.rem & 0x0F) << PORTB0;	//display fraction part
-			PORTB |= ((int)analog & 0x0F) << PORTB4;//display digit part
+			PORTB |= (result.quot & 0x0F) << PORTB4;//display digit part
+			
+			//
+			RESET_BIT(PORTD, BUZZER);
 
 		}
-		else if (READ_BIT(mode, 0) == MODE_TEMPERATURE_SENSOR)
+		else /*MODE_TEMPERATURE_SENSOR*/
 		{
+			
 			/*
-			set vref = 1.1 (hmmm...)
 			read the lm sensor
 			analog = reading * v_ref / ((1 << 11) - 1)
 			analog *= 100 (hint: 10mV/C)
-			if (analog > 60) BUZZ! display 0xffC
+			if (analog > 60) BUZZ!
 			*/
 			digital = adc_read(MODE_TEMPERATURE_SENSOR);
 			analog = (digital * 5) / ((1 << 10) - 1);
 			analog *= 100;							//TODO: clarify the magic 100 (hint: 10mv/C)
-			if (analog > 60 ){
-				SET_BIT(PORTD, BUZZER);  //buzz!
-				SET_BIT_RNG(PORTB, PORTB0, PORTB7); //0xff, for debug
-			}
-			else {
-				RESET_BIT(PORTD, BUZZER);
-				result = div((int)analog, 10);
-
-				PORTB = (result.rem & 0x0F) << PORTB0;	//display units part
-				PORTB |= (result.quot & 0x0F) << PORTB4;//display tens part
-			}
+			(analog > 60) ?	SET_BIT(PORTD, BUZZER) : RESET_BIT(PORTD, BUZZER);
 			
+			result = div((int)analog, 10);
+			PORTB = (result.rem & 0x0F) << PORTB0;	//display units part
+			PORTB |= (result.quot & 0x0F) << PORTB4;//display tens part
 			
 		}
 	}
@@ -87,7 +84,6 @@ int main(void)
 
 ISR (INT0_vect) 
 {
-	/*switches modes and reset display*/
+	/*switches modes*/
 	TOGGLE_BIT(mode, 0);
-	RESET_BIT_RNG(PORTB, 0, 7);
 }
